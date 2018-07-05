@@ -1,21 +1,14 @@
-% im = imread('peppers.png');
-% im = imread('C:\Users\vkpau\Desktop\_railwayStn\hi\IMG_20180312_173334.jpg');
-%
-% normalized = comprehensive_colour_normalization(im);
-%
-% figure;
-% imshowpair(im, normalized, 'montage')
-
 clear;
 clear all;
 clc;
+home;
 
 warning('START...');
 
-for k2 = 1:4
+for k2 = 1:3        %   limit should be 4 not 3. 3 is for leaves only
     errorFile = [];
     errorCount = 0;
-    
+    k2 = 3;
     switch (k2)
         case 1
             imageClassName = 'Buds'
@@ -61,9 +54,18 @@ for k2 = 1:4
                 case 4
                     cd '_InputImages\\Thorns';
             end
+            
             disp('Read Input Image...');
             im = imread(fileName);
             disp('   Image Reading Done!');
+            
+            disp('Orienting Image Vertically');
+            currImageSize = size(im);
+            if(currImageSize(:, 1) < currImageSize(:, 2))
+                im = imrotate(im, 90);
+            end
+            disp('   Orienting Image Vertically Done!');
+            
             cd ..;
             cd ..;
             
@@ -87,6 +89,11 @@ for k2 = 1:4
             histEqualized = adapthisteq(mapped_gray);
             disp('   Histogram Equalization Done!');
             
+            disp('Finding Largest Blob');
+            largestBlob = bwareafilt(clustered, 1);
+            largestBlob = imfill(largestBlob, 'holes');
+            disp('   Finding Largest Blob Done!');
+            
             disp('Writing Files...');
             [~, name, ~] = fileparts(fileName);
             normFileName = sprintf('_OutputImages\\%s\\normalized\\%s.jpg', imageClassName, name);
@@ -94,33 +101,36 @@ for k2 = 1:4
             segFileName = sprintf('_OutputImages\\%s\\segmented\\%s.jpg', imageClassName, name);
             grayScaleFileName = sprintf('_OutputImages\\%s\\grayscale\\%s.jpg', imageClassName, name);
             histEqFileName = sprintf('_OutputImages\\%s\\histeq\\%s.jpg', imageClassName, name);
-            xlsFileName = sprintf('_OutputImages\\%s\\excel\\%s_GLCM.xlsx', imageClassName, name);
+            xlsFileName = sprintf('_OutputImages\\%s\\excel\\%s', imageClassName, name);
+            largestBlobFileName = sprintf('_OutputImages\\%s\\largestblob\\%s.jpg', imageClassName, name);
             
             imwrite(normalized, normFileName);
             imwrite(clustered, binFileName);
             imwrite(mapped, segFileName);
             imwrite(mapped_gray, grayScaleFileName);
             imwrite(histEqualized, histEqFileName);
+            imwrite(largestBlob, largestBlobFileName);
             disp('   Files Written!');
             
             disp('GLCM Haralic Feature Extraction...');
-            GLCM2 = graycomatrix(histEqualized, 'Offset', [2 0;0 2]);
+            GLCM2 = graycomatrix(histEqualized);
             stats = GLCM_Features1(GLCM2,0)
-            GLCM1 = cell2mat(struct2cell(stats));
-            xlswrite(xlsFileName, GLCM1);
+            GLCM1 = struct2array(stats);
+            GLCM1 = GLCM1';
+            xlswrite([xlsFileName, '_GLCM.xlsx'], GLCM1);
             disp('   GLCM Haralic Features Extraction Done!');
             
-            disp('Adding Features to Dataset...');
-            GLCM1 = GLCM1';
+            disp('Geometrical Feature Extraction');
+            geoFeatures = regionprops(largestBlob, 'Area', 'MajorAxisLength', 'MinorAxisLength', 'Eccentricity', 'Orientation', 'ConvexArea', 'FilledArea', 'EquivDiameter', 'Solidity', 'Extent', 'Perimeter', 'PerimeterOld')
+            geoFeatures_Vector = struct2array(geoFeatures);
+            xlswrite([xlsFileName, '_Geometrical.xlsx'], geoFeatures_Vector);
+            disp('   Geometrical Feature Extraction Done!');
             
-            datasetRow = reshape(GLCM1, [1,44]);
+            disp('Adding Features to Dataset...');         
+            datasetRow_GLCM = reshape(GLCM1, [1,22]);
+            datasetRow = [datasetRow_GLCM geoFeatures_Vector 0]
             myDataset = [myDataset; datasetRow];
             disp('   New Row Added!');
-            
-            %     subplot(2, 2, 1), imshow(im), title('Input');
-            %     subplot(2, 2, 2), imshow(normalized), title('Colour Normalized');
-            %     subplot(2, 2, 3), imshow(clustered), title('Labeled');
-            %     subplot(2, 2, 4), imshow(mapped), title('Segmented');
         catch
             warning(['Error in Image... ', fileName]);
             subplot(1, 1, 1), imshow(im), title(fileName);
@@ -134,7 +144,11 @@ for k2 = 1:4
         currFile = currFile + 1;
     end
     
-    xlswrite(['_OutputImages\\', imageClassName, '\\', imageClassName, '_myDatasetGLCM.xlsx'], myDataset);
+    xlswrite(['_OutputImages\\', imageClassName, '\\', imageClassName, '_myDataset_NotKeru.xlsx'], myDataset);
+    myDataset(:,35) = [];
+%     xlswrite(['_OutputImages\\', imageClassName, '\\', imageClassName, '_descriptor.xlsx'], mean(myDataset));
+%     xlswrite(['_OutputImages\\', imageClassName, '\\', imageClassName, '_minVals.xlsx'], min(myDataset));
+%     xlswrite(['_OutputImages\\', imageClassName, '\\', imageClassName, '_maxVals.xlsx'], max(myDataset));
     
     disp(sprintf('   Total Errors Occoured... %d', errorCount));
     
